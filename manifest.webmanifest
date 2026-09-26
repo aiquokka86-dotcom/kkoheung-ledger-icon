@@ -1,0 +1,14 @@
+{
+  "name": "꼬흥네 가계부",
+  "short_name": "꼬흥네 가계부",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f3efff",
+  "theme_color": "#f3efff",
+  "icons": [
+    { "src": "app-icon-v2-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ]
+}

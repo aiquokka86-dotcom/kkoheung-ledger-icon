@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3efff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="꼬흥네 가계부">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="robots" content="noindex">
+  <link rel="apple-touch-icon" href="app-icon-v2-180.png">
+  <link rel="icon" type="image/png" sizes="180x180" href="app-icon-v2-180.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <title>꼬흥네 가계부</title>
+  <style>
+    :root { color-scheme: light; }
+    html, body { margin:0; height:100%; background:#f3efff; }
+    body {
+      font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+      color:#2c2440; overscroll-behavior:none;
+    }
+    /* 아이프레임 안에서는 env(safe-area-inset-*) 가 0 이라 여백을 여기서 만듭니다. */
+    #frame {
+      position:fixed; inset:0; border:0; width:100%; height:100%;
+      padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      box-sizing:border-box; background:#f3efff;
+    }
+    #frame iframe { width:100%; height:100%; border:0; display:block; }
+    .panel {
+      position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+      padding:24px calc(24px + env(safe-area-inset-left)) 24px calc(24px + env(safe-area-inset-right));
+      background:#f3efff;
+    }
+    .card { width:100%; max-width:420px; background:#fff; border-radius:20px; padding:22px; box-shadow:0 12px 30px rgba(60,40,90,.12); }
+    .card h1 { margin:0 0 8px; font-size:1.25rem; }
+    .card p { margin:0 0 16px; font-size:.94rem; line-height:1.5; color:#5b5270; }
+    .card input { width:100%; box-sizing:border-box; padding:12px 14px; font-size:16px; border:1px solid #d9d2ec; border-radius:12px; }
+    .card button { width:100%; margin-top:12px; padding:13px; font-size:1rem; font-weight:700; color:#fff; background:#6c5ce7; border:0; border-radius:12px; }
+    .card .hint { margin:12px 0 0; font-size:.84rem; color:#8a82a0; }
+    .card .error { margin:10px 0 0; font-size:.88rem; color:#d6336c; min-height:1.1em; }
+    .loading { display:flex; flex-direction:column; align-items:center; gap:14px; color:#6c5ce7; font-weight:600; }
+    .loading img { width:84px; height:84px; }
+    [hidden] { display:none !important; }
+  </style>
+</head>
+<body>
+  <!--
+    꼬흥네 가계부 홈 화면 런처.
+    Apps Script 웹앱의 <head> 는 구글 껍데기 페이지 안쪽 아이프레임에 있어서
+    아이폰이 홈 화면 아이콘을 읽지 못합니다. 이 페이지를 정적 호스팅에 올리고
+    홈 화면에 추가하면, 아이콘과 전체화면은 이 페이지가 맡고 내용은 웹앱이 채웁니다.
+
+    아래 APP_URL 에 배포한 /exec 주소를 적으면 설정 화면 없이 바로 열립니다.
+    비워 두면 처음 열 때 주소를 한 번 물어보고 이 기기에 저장합니다.
+  -->
+  <div id="setup" class="panel" hidden>
+    <form class="card" id="setupForm">
+      <h1>가계부 주소 등록</h1>
+      <p>Apps Script에서 배포한 웹앱 주소(<code>/exec</code>로 끝나는 주소)를 한 번만 붙여 넣으세요. 이 아이폰에만 저장됩니다.</p>
+      <input id="appUrl" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false"
+             placeholder="https://script.google.com/macros/s/.../exec" aria-label="웹앱 주소">
+      <p class="error" id="setupError"></p>
+      <button type="submit">가계부 열기</button>
+      <p class="hint">주소를 바꾸려면 이 화면을 다시 열어 새 주소를 넣으면 됩니다.</p>
+    </form>
+  </div>
+
+  <div id="loading" class="panel">
+    <div class="loading"><img src="app-icon-v2-180.png" alt=""><span>가계부를 여는 중…</span></div>
+  </div>
+
+  <div id="frame" hidden></div>
+
+  <script>
+    // 배포한 /exec 주소를 여기에 적어 두면 설정 화면을 건너뜁니다.
+    const APP_URL = '';
+
+    const KEY_STORE = 'familyLedgerKey';
+    const URL_STORE = 'familyLedgerAppUrl';
+    // Apps Script 내용이 실제로 실행되는 구글 샌드박스 주소입니다.
+    const APP_ORIGIN = /^https:\/\/[a-z0-9-]+\.(googleusercontent\.com|usercontent\.google\.com)$/;
+
+    const $ = selector => document.querySelector(selector);
+    // 사파리 설정에 따라 저장소를 막아 두면 예외가 납니다. 그래도 앱은 열려야 합니다.
+    const read = name => { try { return localStorage.getItem(name); } catch (error) { return null; } };
+    const write = (name, value) => { try { localStorage.setItem(name, value); } catch (error) { /* 이번 실행만 씁니다. */ } };
+
+    function appUrl() {
+      const stored = (APP_URL || read(URL_STORE) || '').trim();
+      return /^https:\/\/script\.google\.com\/.*\/exec/.test(stored) ? stored : '';
+    }
+
+    function openApp(url) {
+      $('#setup').hidden = true;
+      const holder = $('#frame');
+      const frame = document.createElement('iframe');
+      frame.src = url;
+      frame.title = '꼬흥네 가계부';
+      frame.allow = 'clipboard-write';
+      frame.addEventListener('load', () => { $('#loading').hidden = true; });
+      holder.appendChild(frame);
+      holder.hidden = false;
+      // 아이프레임이 끝내 뜨지 않으면 안내를 남겨 둡니다.
+      setTimeout(() => {
+        if (!$('#loading').hidden) {
+          $('#loading').innerHTML = '<div class="card"><h1>앱을 불러오지 못했어요</h1>'
+            + '<p>주소가 맞는지, Apps Script 배포가 <b>모든 사용자</b>로 되어 있는지 확인하세요.</p>'
+            + '<button type="button" onclick="forgetUrl()">주소 다시 넣기</button></div>';
+        }
+      }, 12000);
+    }
+
+    function forgetUrl() {
+      try { localStorage.removeItem(URL_STORE); } catch (error) { /* 무시합니다. */ }
+      location.reload();
+    }
+
+    $('#setupForm').addEventListener('submit', event => {
+      event.preventDefault();
+      const value = $('#appUrl').value.trim();
+      if (!/^https:\/\/script\.google\.com\/.*\/exec/.test(value)) {
+        $('#setupError').textContent = '/exec 으로 끝나는 웹앱 주소를 넣어 주세요.';
+        return;
+      }
+      write(URL_STORE, value);
+      openApp(value);
+    });
+
+    /*
+      가족 앱 키 전달.
+      아이프레임 안(구글 도메인)의 저장소는 사파리가 막을 수 있어서, 키는 홈 화면 앱인
+      이 페이지가 대신 기억합니다. 키는 googleusercontent.com 에서 온 요청에만,
+      그 창으로만 돌려주고 주소창에는 절대 싣지 않습니다.
+    */
+    window.addEventListener('message', event => {
+      const data = event.data;
+      if (!data || typeof data !== 'object' || !APP_ORIGIN.test(event.origin) || !event.source) return;
+      if (data.type === 'kkoheung-key-request') {
+        event.source.postMessage({ type: 'kkoheung-key', key: read(KEY_STORE) || '' }, event.origin);
+      } else if (data.type === 'kkoheung-key-save' && typeof data.key === 'string') {
+        write(KEY_STORE, data.key);
+      }
+    });
+
+    const url = appUrl();
+    if (url) openApp(url);
+    else { $('#loading').hidden = true; $('#setup').hidden = false; $('#appUrl').focus(); }
+  </script>
+</body>
+</html>

@@ -159,6 +159,10 @@
       const holder = $('#frame');
       if (!vv || !holder) return;
       const shrunk = vv.height < window.innerHeight - 100;
+      // 같은 값을 다시 쓰지 않습니다. 아이프레임 크기를 바꾸면 안쪽 크기 변경 이벤트가 되돌아와 서로 계속 맞추게 됩니다.
+      const next = shrunk ? `${Math.round(vv.height)}|${Math.round(vv.offsetTop)}` : 'full';
+      if (holder.dataset.fit === next) return;
+      holder.dataset.fit = next;
       holder.classList.toggle('keyboard', shrunk);
       holder.style.bottom = shrunk ? 'auto' : '0';
       holder.style.height = shrunk ? vv.height + 'px' : '';

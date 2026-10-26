@@ -163,13 +163,11 @@
       holder.style.bottom = shrunk ? 'auto' : '0';
       holder.style.height = shrunk ? vv.height + 'px' : '';
       holder.style.top = shrunk ? vv.offsetTop + 'px' : '0';
-      if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
     }
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', fitToVisibleArea);
       window.visualViewport.addEventListener('scroll', fitToVisibleArea);
     }
-    window.addEventListener('scroll', () => { if (window.scrollY) window.scrollTo(0, 0); });
 
     const url = appUrl();
     if (url) openApp(url);

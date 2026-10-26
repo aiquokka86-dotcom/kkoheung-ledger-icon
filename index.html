@@ -8,13 +8,19 @@
   <meta name="apple-mobile-web-app-title" content="꼬흥네 가계부">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="robots" content="noindex">
-  <link rel="apple-touch-icon" href="app-icon-v2-180.png">
-  <link rel="icon" type="image/png" sizes="180x180" href="app-icon-v2-180.png">
-  <link rel="manifest" href="manifest.webmanifest">
+  <!-- 홈 화면 아이콘. 상대 경로 해석이나 매니페스트 우선순위가 끼어들지 않도록
+       절대 주소로 적고, 예전 아이폰용 precomposed 도 같이 답니다.
+       매니페스트 링크는 일부러 뺐습니다. iOS 17 이상은 매니페스트가 없어도
+       홈 화면 앱을 전체화면으로 열고, 아이콘은 apple-touch-icon 쪽이 가장 확실합니다. -->
+  <link rel="apple-touch-icon" sizes="180x180" href="https://aiquokka86-dotcom.github.io/kkoheung-ledger-icon/app-icon-v2-180.png">
+  <link rel="apple-touch-icon-precomposed" sizes="180x180" href="https://aiquokka86-dotcom.github.io/kkoheung-ledger-icon/app-icon-v2-180.png">
+  <link rel="icon" type="image/png" sizes="180x180" href="https://aiquokka86-dotcom.github.io/kkoheung-ledger-icon/app-icon-v2-180.png">
   <title>꼬흥네 가계부</title>
   <style>
     :root { color-scheme: light; }
-    html, body { margin:0; height:100%; background:#f3efff; }
+    /* 본문을 고정해 둬야 키보드가 올라올 때 사파리가 이 페이지 전체를 위로 밀어 올리지 못합니다. */
+    html, body { margin:0; height:100%; background:#f3efff; overflow:hidden; }
+    body { position:fixed; inset:0; width:100%; }
     body {
       font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
       color:#2c2440; overscroll-behavior:none;
@@ -25,6 +31,7 @@
       padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
       box-sizing:border-box; background:#f3efff;
     }
+    #frame.keyboard { padding-bottom:0; }
     #frame iframe { width:100%; height:100%; border:0; display:block; }
     .panel {
       position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
@@ -141,6 +148,28 @@
         write(KEY_STORE, data.key);
       }
     });
+
+    /*
+      키보드가 올라오면 아이프레임을 키보드 위 보이는 영역(visualViewport)에 딱 맞춥니다.
+      그렇지 않으면 사파리가 입력칸을 보여 주려고 페이지 전체(고정 머리줄 포함)를 위로 밀어 올려,
+      수정 중인 입력칸이 화면 밖으로 나가고 화면이 왔다갔다했습니다. 이제 스크롤은 앱 안에서만 일어납니다.
+    */
+    function fitToVisibleArea() {
+      const vv = window.visualViewport;
+      const holder = $('#frame');
+      if (!vv || !holder) return;
+      const shrunk = vv.height < window.innerHeight - 100;
+      holder.classList.toggle('keyboard', shrunk);
+      holder.style.bottom = shrunk ? 'auto' : '0';
+      holder.style.height = shrunk ? vv.height + 'px' : '';
+      holder.style.top = shrunk ? vv.offsetTop + 'px' : '0';
+      if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
+    }
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', fitToVisibleArea);
+      window.visualViewport.addEventListener('scroll', fitToVisibleArea);
+    }
+    window.addEventListener('scroll', () => { if (window.scrollY) window.scrollTo(0, 0); });
 
     const url = appUrl();
     if (url) openApp(url);
